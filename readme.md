@@ -15,4 +15,4 @@ Here's an example of how you can use the API with cURL:
 >> curl -X POST -H "Content-Type: application/json" -d '{"file_paths": ["path/to/file1.jpg", "path/to/file2.pdf"]}' http://localhost:5000/extract
 
 
-#main.py googlevission.py, and working_extracted.py runs from console
+#main.py runs server and everything else
