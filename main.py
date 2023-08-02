@@ -524,6 +524,133 @@ def get_file(file_uuid):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/upload-file', methods=['POST'])
+def upload_file():
+    # Check if a file is present in the request
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+   
+    file = request.files['file']
+   
+    # Save the uploaded file to the specified directory
+    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    file.save(file_path)
+   
+    # Generate a UUID for the file
+    file_id = str(uuid.uuid4())
+   
+    # Insert the file details into the database
+    c.execute("INSERT INTO files (id, file_path, receive_flag, status, question, answer) VALUES (?, ?, ?, ?, ?, ?)",
+              (file_id, file_path, 'received', '', '', ''))
+    conn.commit()
+   
+    return jsonify({'message': 'File uploaded successfully', 'file_id': file_id}), 200
+
+
+@app.route('/query-with-file', methods=['POST'])
+def query_with_file():
+    # Check if a file is present in the request
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+   
+    file = request.files['file']
+    question = request.form.get('question')
+   
+    # Save the uploaded file to the specified directory
+    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    file.save(file_path)
+   
+    # Perform question-answering using the uploaded file
+    result = model({
+        'question': question,
+        'context': file_path
+    })
+   
+    # Retrieve the answer from the result
+    answer = result['answer']
+   
+    # Generate a UUID for the question-answer pair
+    qa_id = str(uuid.uuid4())
+   
+    # Insert the file details and question-answer pair into the database
+    c.execute("UPDATE files SET status = ?, question = ?, answer = ? WHERE file_path = ?",
+              ('done', question, answer, file_path))
+    conn.commit()
+   
+    return jsonify({'answer': answer, 'qa_id': qa_id}), 200
+
+
+@app.route('/files', methods=['GET'])
+def get_files():
+    # Retrieve all the files from the database
+    c.execute("SELECT * FROM files")
+    files = c.fetchall()
+   
+    # Format the files as a JSON response
+    files_data = []
+    for file in files:
+        file_data = {
+            'id': file[0],
+            'file_path': file[1],
+            'receive_flag': file[2],
+            'status': file[3],
+            'question': file[4],
+            'answer': file[5]
+        }
+        files_data.append(file_data)
+   
+    return jsonify({'files': files_data}), 200
+
+
+@app.route('/files/<file_id>', methods=['GET'])
+def get_file(file_id):
+    # Retrieve the file with the specified ID from the database
+    c.execute("SELECT * FROM files WHERE id = ?", (file_id,))
+    file = c.fetchone()
+   
+    if file is None:
+        return jsonify({'error': 'File not found'}), 404
+   
+    # Format the file as a JSON response
+    file_data = {
+        'id': file[0],
+        'file_path': file[1],
+        'receive_flag': file[2],
+        'status': file[3],
+        'question': file[4],
+        'answer': file[5]
+    }
+   
+    return jsonify({'file': file_data}), 200
+
+# Approver-restricted route for approving or denying a question-answer pair
+@app.route('/approve/<qa_id>', methods=['PUT'])
+@login_required
+def approve_qa(qa_id):
+    if session['role'] != 'approver':
+        return jsonify({'error': 'Unauthorized access'}), 401
+
+    # Retrieve the question-answer pair from the database
+    c.execute("SELECT * FROM files WHERE id = ?", (qa_id,))
+    qa_pair = c.fetchone()
+
+    if qa_pair is None:
+        return jsonify({'error': 'Question-Answer pair not found'}), 404
+
+    # Update the status of the question-answer pair based on the request
+    status = request.json.get('status')
+
+    if status == 'approve':
+        c.execute("UPDATE files SET status = ? WHERE id = ?", ('approved', qa_id))
+        conn.commit()
+    elif status == 'deny':
+        c.execute("DELETE FROM files WHERE id = ?", (qa_id,))
+        conn.commit()
+    else:
+        return jsonify({'error': 'Invalid status'}), 400
+
+    return jsonify({'message': 'Question-Answer pair updated successfully'}), 200
+
 if __name__ == '__main__':
     create_table()
     app.run(threaded=True, debug=True)
