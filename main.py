@@ -653,4 +653,4 @@ def approve_qa(qa_id):
 
 if __name__ == '__main__':
     create_table()
-    app.run(threaded=True, debug=True)
+    app.run(threaded=True)
