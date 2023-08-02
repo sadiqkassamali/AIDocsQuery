@@ -36,7 +36,15 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 DB_FILE = 'file_database.db'
 PAGE_SIZE = 10  # Number of files per page
 
+// set up rate limiter: maximum of five requests per minute
+var RateLimit = require('express-rate-limit');
+var limiter = RateLimit({
+  windowMs: 1*60*1000, // 1 minute
+  max: 5
+});
 
+// apply rate limiter to all requests
+app.use(limiter);
 
 def create_table():
     conn = sqlite3.connect(DB_FILE)
