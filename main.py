@@ -40,7 +40,7 @@ PAGE_SIZE = 10  # Number of files per page
 var RateLimit = require('express-rate-limit');
 var limiter = RateLimit({
   windowMs: 1*60*1000, // 1 minute
-  max: 5
+  max: 200
 });
 
 // apply rate limiter to all requests
