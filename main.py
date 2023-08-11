@@ -44,7 +44,8 @@ PAGE_SIZE = 10  # Number of files per page
 
 
 pipeline_name = "impira/layoutlm-document-qa"
-model = pipeline("document-question-answering", model=pipeline_name)
+
+model = pipeline("document-question-answering", model=pipeline_name, applyocr=True)
 def create_table():
     try:
         conn = sqlite3.connect(DB_FILE)
