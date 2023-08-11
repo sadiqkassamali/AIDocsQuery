@@ -579,29 +579,6 @@ def query_with_file():
     return jsonify({'answer': answer, 'qa_id': qa_id}), 200
 
 
-@app.route('/files', methods=['GET'])
-def get_files():
-    # Retrieve all the files from the database
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM files")
-    files = cursor.fetchall()
-   
-    # Format the files as a JSON response
-    files_data = []
-    for file in files:
-        file_data = {
-            'id': file[0],
-            'file_path': file[1],
-            'receive_flag': file[2],
-            'status': file[3],
-            'question': file[4],
-            'answer': file[5]
-        }
-        files_data.append(file_data)
-   
-    return jsonify({'files': files_data}), 200
 
 
 @app.route('/files/<file_id>', methods=['GET'])
