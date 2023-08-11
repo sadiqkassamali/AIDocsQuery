@@ -640,4 +640,4 @@ def get_file(file_uuid):
 
 if __name__ == '__main__':
     create_table()
-    app.run(threaded=True, Debug=True)
+    app.run(threaded=True, debug=True)
