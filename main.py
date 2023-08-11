@@ -580,32 +580,33 @@ def query_with_file():
 
 
 
-
-@app.route('/files/<file_id>', methods=['GET'])
-def get_file(file_id):
-    # Retrieve the file with the specified ID from the database
-
+@app.route('/files/<file_uuid>', methods=['GET'])
+def get_file(file_uuid):
+    # Retrieve the file with the specified UUID from the database
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM files WHERE id = ?", (file_id,))
+    cursor.execute("SELECT * FROM file_entries WHERE uuid = ?", (file_uuid,))
     file = cursor.fetchone()
-   
+
+    conn.close()
+
     if file is None:
         return jsonify({'error': 'File not found'}), 404
-   
+
     # Format the file as a JSON response
     file_data = {
-        'id': file[0],
-        'file_path': file[1],
-        'receive_flag': file[2],
+        'uuid': file[1],
+        'file_path': file[2],
         'status': file[3],
-        'question': file[4],
-        'answer': file[5]
+        'models': json.loads(file[4]),
+        'questions': json.loads(file[5]),
+        'answers': json.loads(file[6]),
+        'dataset_path': file[7],
+        'extracted_text': file[8]
     }
-   
-    return jsonify({'file': file_data}), 200
 
+    return jsonify({'file': file_data}), 200
 
 @app.route('/approve/<qa_id>', methods=['PUT'])
 @login_required
