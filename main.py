@@ -608,34 +608,35 @@ def get_file(file_uuid):
 
     return jsonify({'file': file_data}), 200
 
-@app.route('/approve/<qa_id>', methods=['PUT'])
-@login_required
-def approve_qa(qa_id):
-    if session['role'] != 'approver':
-        return jsonify({'error': 'Unauthorized access'}), 401
-
-    # Retrieve the question-answer pair from the database
-    c.execute("SELECT * FROM files WHERE id = ?", (qa_id,))
-    qa_pair = c.fetchone()
-
-    if qa_pair is None:
-        return jsonify({'error': 'Question-Answer pair not found'}), 404
-
-    # Update the status of the question-answer pair based on the request
-    status = request.json.get('status')
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    if status == 'approve':
-        cursor.execute("UPDATE files SET status = ? WHERE id = ?", ('approved', qa_id))
-        conn.commit()
-    elif status == 'deny':
-        c.execute("DELETE FROM files WHERE id = ?", (qa_id,))
-        conn.commit()
-    else:
-        return jsonify({'error': 'Invalid status'}), 400
-
-    return jsonify({'message': 'Question-Answer pair updated successfully'}), 200
+# @app.route('/approve/<qa_id>', methods=['PUT'])
+# def approve_qa(qa_id):
+#     conn = sqlite3.connect(DB_FILE)
+#     cursor = conn.cursor()
+#     if session['role'] != 'approver':
+#         return jsonify({'error': 'Unauthorized access'}), 401
+#
+#     # Retrieve the question-answer pair from the database
+#     cursor.execute("SELECT * FROM files WHERE id = ?", (qa_id,))
+#     qa_pair = cursor.fetchone()
+#
+#     if qa_pair is None:
+#         return jsonify({'error': 'Question-Answer pair not found'}), 404
+#
+#     # Update the status of the question-answer pair based on the request
+#     status = request.json.get('status')
+#     conn = sqlite3.connect(DB_FILE)
+#     cursor = conn.cursor()
+#     if status == 'approve':
+#         cursor.execute("UPDATE files SET status = ? WHERE id = ?", ('approved', qa_id))
+#         conn.commit()
+#     elif status == 'deny':
+#         cursor.execute("DELETE FROM files WHERE id = ?", (qa_id,))
+#         conn.commit()
+#     else:
+#         return jsonify({'error': 'Invalid status'}), 400
+#
+#     return jsonify({'message': 'Question-Answer pair updated successfully'}), 200
 
 if __name__ == '__main__':
     create_table()
-    app.run(threaded=True)
+    app.run(threaded=True, Debug=True)
