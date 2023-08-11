@@ -20,47 +20,52 @@ from werkzeug.utils import secure_filename
 import sqlite3
 import threading
 import uuid
-
-from transformers import AutoImageProcessor, ResNetForImageClassification
+from transformers import AutoImageProcessor, ResNetForImageClassification, pipeline
 import torch
 from datasets import load_dataset
-
-from transformers import pipeline
 
 app = Flask(__name__)
 lock = Lock()
 
-# Set the upload folder
+# Define the path to the uploaded files directory
+UPLOAD_DIR = 'uploads'
+uploads = 'uploads'
+
 UPLOAD_FOLDER = 'uploads'
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+app.config['UPLOAD_DIR'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(uploads, exist_ok=True)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 DB_FILE = 'file_database.db'
 PAGE_SIZE = 10  # Number of files per page
 
-// set up rate limiter: maximum of five requests per minute
-var RateLimit = require('express-rate-limit');
-var limiter = RateLimit({
-  windowMs: 1*60*1000, // 1 minute
-  max: 200
-});
 
-// apply rate limiter to all requests
-app.use(limiter);
-
+pipeline_name = "impira/layoutlm-document-qa"
+model = pipeline("document-question-answering", model=pipeline_name)
 def create_table():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS file_entries (
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('''
+             CREATE TABLE IF NOT EXISTS file_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uuid TEXT UNIQUE NOT NULL,
             file_path TEXT NOT NULL,
             status TEXT DEFAULT 'pending',
-            model TEXT,
+            models TEXT,              
+            questions TEXT,           
+            answers TEXT,            
             dataset_path TEXT,
             extracted_text TEXT
         )
-    ''')
-    conn.close()
+        ''')
+    except sqlite3.Error as e:
+        print("Error creating table:", e)
+    finally:
+        conn.close()
 
 
 def preprocess_image(image_path):
@@ -461,22 +466,6 @@ def login():
 
     return render_template('login.html')
 
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part in the request.'}), 400
-
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected.'}), 400
-
-    if file:
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        file_uuid = insert_file(file_path)
-        return jsonify({'message': 'File uploaded successfully.', 'file_uuid': file_uuid}), 200
-
 
 @app.route('/extract', methods=['POST'])
 def extract_text_api():
@@ -520,39 +509,40 @@ def get_all_files():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/files/<file_uuid>', methods=['GET'])
-def get_file(file_uuid):
-    try:
-        file_data = get_file_from_db(file_uuid)
-        if file_data:
-            return jsonify(file_data), 200
-        else:
-            return jsonify({'message': 'File not found.'}), 404
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 
 @app.route('/upload-file', methods=['POST'])
 def upload_file():
-    # Check if a file is present in the request
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
-   
-    file = request.files['file']
-   
-    # Save the uploaded file to the specified directory
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
-    file.save(file_path)
-   
-    # Generate a UUID for the file
-    file_id = str(uuid.uuid4())
-   
-    # Insert the file details into the database
-    c.execute("INSERT INTO files (id, file_path, receive_flag, status, question, answer) VALUES (?, ?, ?, ?, ?, ?)",
-              (file_id, file_path, 'received', '', '', ''))
-    conn.commit()
-   
-    return jsonify({'message': 'File uploaded successfully', 'file_id': file_id}), 200
+    try:
+        # Check if a file is present in the request
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+
+        file = request.files['file']
+        models = request.form.getlist('models')  # Get list of models from the request
+        questions = request.form.getlist('questions')  # Get list of questions from the request
+        answers = request.form.getlist('answers')  # Get list of answers from the request
+
+        # Save the uploaded file to the specified directory
+        file_path = os.path.join(UPLOAD_DIR, secure_filename(file.filename))
+        file.save(file_path)
+
+        # Generate a UUID for the file
+        file_id = str(uuid.uuid4())
+
+        # Insert the file details into the database
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO file_entries (uuid, file_path, status, models, questions, answers)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (file_id, file_path, 'received', json.dumps(models), json.dumps(questions), json.dumps(answers)))
+        conn.commit()
+
+        return jsonify({'message': 'File uploaded successfully', 'file_id': file_id}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
 
 
 @app.route('/query-with-file', methods=['POST'])
@@ -560,7 +550,8 @@ def query_with_file():
     # Check if a file is present in the request
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
-   
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
     file = request.files['file']
     question = request.form.get('question')
    
@@ -579,9 +570,9 @@ def query_with_file():
    
     # Generate a UUID for the question-answer pair
     qa_id = str(uuid.uuid4())
-   
+
     # Insert the file details and question-answer pair into the database
-    c.execute("UPDATE files SET status = ?, question = ?, answer = ? WHERE file_path = ?",
+    cursor.execute("UPDATE files SET status = ?, question = ?, answer = ? WHERE file_path = ?",
               ('done', question, answer, file_path))
     conn.commit()
    
@@ -591,8 +582,11 @@ def query_with_file():
 @app.route('/files', methods=['GET'])
 def get_files():
     # Retrieve all the files from the database
-    c.execute("SELECT * FROM files")
-    files = c.fetchall()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM files")
+    files = cursor.fetchall()
    
     # Format the files as a JSON response
     files_data = []
@@ -613,8 +607,12 @@ def get_files():
 @app.route('/files/<file_id>', methods=['GET'])
 def get_file(file_id):
     # Retrieve the file with the specified ID from the database
-    c.execute("SELECT * FROM files WHERE id = ?", (file_id,))
-    file = c.fetchone()
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM files WHERE id = ?", (file_id,))
+    file = cursor.fetchone()
    
     if file is None:
         return jsonify({'error': 'File not found'}), 404
@@ -631,7 +629,7 @@ def get_file(file_id):
    
     return jsonify({'file': file_data}), 200
 
-# Approver-restricted route for approving or denying a question-answer pair
+
 @app.route('/approve/<qa_id>', methods=['PUT'])
 @login_required
 def approve_qa(qa_id):
@@ -647,9 +645,10 @@ def approve_qa(qa_id):
 
     # Update the status of the question-answer pair based on the request
     status = request.json.get('status')
-
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
     if status == 'approve':
-        c.execute("UPDATE files SET status = ? WHERE id = ?", ('approved', qa_id))
+        cursor.execute("UPDATE files SET status = ? WHERE id = ?", ('approved', qa_id))
         conn.commit()
     elif status == 'deny':
         c.execute("DELETE FROM files WHERE id = ?", (qa_id,))
