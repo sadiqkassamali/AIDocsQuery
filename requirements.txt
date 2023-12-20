@@ -6,6 +6,6 @@ torch~=2.0.1
 Pillow==10.0.0
 Flask~=2.3.2
 Werkzeug~=2.3.6
-transformers==4.31.0
+transformers==4.36.0
 datasets==2.14.4
 setuptools==68.0.0
